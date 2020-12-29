@@ -48,7 +48,6 @@ VirtualMemory VirtualMemory::Allocate(size_t size,
     case kReadWrite: prot = PROT_READ | PROT_WRITE; break;
     default:
      UNREACHABLE();
-     prot = 0;
   }
 
   void* address = mmap(0, size, prot,
@@ -82,7 +81,6 @@ bool VirtualMemory::Protect(Protection protection) {
     case kReadWrite: prot = PROT_READ | PROT_WRITE; break;
     default:
      UNREACHABLE();
-     prot = 0;
   }
 
   int result = mprotect(address_, size_, prot);

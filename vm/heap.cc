@@ -514,8 +514,8 @@ void Heap::ProcessTenureStack() {
   }
 }
 
-static bool IsForwarded(HeapObject obj) {
-  uword header = *reinterpret_cast<uword*>(obj->Addr());
+static bool IsForwarded(const HeapObject& obj) {
+  const auto header = *reinterpret_cast<uword*>(obj->Addr());
   return header & (1 << kMarkBit);
 }
 
@@ -549,7 +549,7 @@ void Heap::ScavengePointer(Object* ptr) {
     new_target = ForwardingTarget(old_target);
   } else {
     // Target is now known to be reachable. Move it to to-space.
-    intptr_t size = old_target->HeapSize();
+    const auto size = old_target->HeapSize();
 
     uword new_target_addr;
     if (old_target->Addr() < survivor_end_) {
@@ -572,7 +572,7 @@ void Heap::ScavengePointer(Object* ptr) {
 }
 
 void Heap::ScavengeOldObject(HeapObject obj) {
-  intptr_t cid = obj->cid();
+  const auto cid = obj->cid();
   ScavengeClass(cid);
   if (cid == kWeakArrayCid) {
     AddToWeakList(static_cast<WeakArray>(obj));
@@ -595,7 +595,7 @@ void Heap::ScavengeClass(intptr_t cid) {
   ASSERT(cid < class_table_size_);
   // This is very similar to ScavengePointer.
 
-  HeapObject old_target = static_cast<HeapObject>(class_table_[cid]);
+  const auto old_target = static_cast<HeapObject>(class_table_[cid]);
   if (old_target->IsImmediateOrOldObject()) {
     return;
   }
@@ -608,7 +608,7 @@ void Heap::ScavengeClass(intptr_t cid) {
   }
 
   // Target is now known to be reachable. Move it to to-space.
-  intptr_t size = old_target->HeapSize();
+  const auto size = old_target->HeapSize();
 
   uword new_target_addr;
   if (old_target->Addr() < survivor_end_) {
@@ -800,13 +800,13 @@ void Heap::Sweep() {
 }
 
 bool Heap::SweepRegion(Region* region) {
-  uword scan = region->object_start();
-  uword end = region->object_end();
+  auto scan = region->object_start();
+  const auto end = region->object_end();
   while (scan < end) {
     HeapObject obj = HeapObject::FromAddr(scan);
     if (obj->is_marked()) {
       obj->set_is_marked(false);
-      intptr_t size = obj->HeapSize();
+      const auto size = obj->HeapSize();
       old_size_ += size;
       scan += size;
     } else {

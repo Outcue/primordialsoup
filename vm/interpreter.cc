@@ -4,6 +4,8 @@
 
 #include "vm/interpreter.h"
 
+#include <iostream>
+
 #include "vm/heap.h"
 #include "vm/isolate.h"
 #include "vm/math.h"
@@ -132,6 +134,8 @@ Interpreter::Interpreter(Heap* heap, Isolate* isolate) :
   checked_stack_limit_ =
       stack_limit_ + (sizeof(Activation::Layout) / sizeof(Object));
 
+     PopulateFunctionTable();
+
 #if defined(DEBUG)
   for (intptr_t i = 0; i < kStackSlots; i++) {
     stack_limit_[i] = static_cast<Object>(kUninitializedWord);
@@ -144,19 +148,16 @@ Interpreter::~Interpreter() {
   free(stack_limit_);
 }
 
-
 void Interpreter::PushLiteralVariable(intptr_t offset) {
   // Not used in Newspeak, except by the implementation of eventual sends.
   // TODO(rmacnak): Add proper eventual send bytecode.
   Push(object_store()->message_loop());
 }
 
-
 void Interpreter::PushTemporary(intptr_t offset) {
   Object temp = FrameTemp(fp_, offset);
   Push(temp);
 }
-
 
 void Interpreter::PushRemoteTemp(intptr_t vector_offset, intptr_t offset) {
   Object vector = FrameTemp(fp_, vector_offset);
@@ -210,7 +211,6 @@ void Interpreter::PushLiteral(intptr_t offset) {
   }
   Push(literal);
 }
-
 
 void Interpreter::PushEnclosingObject(intptr_t depth) {
   ASSERT(depth > 0);  // Compiler should have used push receiver.
@@ -309,8 +309,8 @@ bool Interpreter::HasMethod(Behavior cls, String selector) {
 
 void Interpreter::OrdinarySend(intptr_t selector_index,
                                intptr_t num_args) {
-  String selector = SelectorAt(selector_index);
-  OrdinarySend(selector, num_args);  // SAFEPOINT
+    String selector = SelectorAt(selector_index);
+    OrdinarySend(selector, num_args);  // SAFEPOINT
 }
 
 
@@ -770,7 +770,7 @@ void Interpreter::InsertAbsentReceiver(Object receiver, intptr_t num_args) {
 }
 
 
-void Interpreter::ActivateAbsent(Method method,
+void Interpreter::ActivateAbsent(Method& method,
                                  Object receiver,
                                  intptr_t num_args) {
   InsertAbsentReceiver(receiver, num_args);
@@ -778,30 +778,29 @@ void Interpreter::ActivateAbsent(Method method,
 }
 
 
-void Interpreter::Activate(Method method, intptr_t num_args) {
-  ASSERT(num_args == method->NumArgs());
-
-  intptr_t prim = method->Primitive();
+void Interpreter::Activate(Method& method, intptr_t num_args) {
+  ASSERT(num_args == method->NumArgs());    
+  const auto prim = method->Primitive();
   if (prim != 0) {
     if (TRACE_PRIMITIVES) {
       OS::PrintErr("Primitive %" Pd "\n", prim);
     }
     if ((prim & 256) != 0) {
       // Getter
-      intptr_t offset = prim & 255;
+      const auto offset = prim & 255;
       ASSERT(num_args == 0);
-      Object receiver = Stack(0);
-      ASSERT(receiver->IsRegularObject() || receiver->IsEphemeron());
-      Object value = static_cast<RegularObject>(receiver)->slot(offset);
+      const auto& receiver = Stack(0);
+      ASSERT(receiver.IsRegularObject() || receiver.IsEphemeron());
+      const auto& value = static_cast<RegularObject>(receiver)->slot(offset);
       PopNAndPush(1, value);
       return;
     } else if ((prim & 512) != 0) {
       // Setter
-      intptr_t offset = prim & 255;
+      const auto offset = prim & 255;
       ASSERT(num_args == 1);
-      Object receiver = Stack(1);
-      Object value = Stack(0);
-      ASSERT(receiver->IsRegularObject() || receiver->IsEphemeron());
+      const auto& receiver = Stack(1);
+      const auto& value = Stack(0);
+      ASSERT(receiver.IsRegularObject() || receiver.IsEphemeron());
       static_cast<RegularObject>(receiver)->set_slot(offset, value);
       PopNAndPush(2, receiver);
       return;
@@ -815,7 +814,7 @@ void Interpreter::Activate(Method method, intptr_t num_args) {
   }
 
   // Create frame.
-  Object receiver = Stack(num_args);
+  const auto& receiver = Stack(num_args);
   Push(static_cast<SmallInteger>(reinterpret_cast<uword>(ip_)));
   Push(static_cast<SmallInteger>(reinterpret_cast<uword>(fp_)));
   fp_ = sp_;
@@ -825,8 +824,8 @@ void Interpreter::Activate(Method method, intptr_t num_args) {
   Push(receiver);
 
   ip_ = method->IP(SmallInteger::New(1));
-  intptr_t num_temps = method->NumTemps();
-  for (intptr_t i = num_args; i < num_temps; i++) {
+  const auto num_temps = method->NumTemps();
+  for (auto i = num_args; i < num_temps; i++) {
     Push(nil);
   }
 
@@ -1114,7 +1113,7 @@ void Interpreter::Exit() {
   longjmp(*environment_, 1);
 }
 
-void Interpreter::ActivateDispatch(Method method, intptr_t num_args) {
+void Interpreter::ActivateDispatch(Method& method, intptr_t num_args) {
   ASSERT(method->Primitive() == 0);
   Interpreter::Activate(method, num_args);
 }
@@ -1144,656 +1143,1355 @@ void Interpreter::PrintStack() {
   CreateBaseFrame(top);
 }
 
-void Interpreter::Interpret() {
-  uintptr_t extA = 0;
-  uintptr_t extB = 0;
-  for (;;) {
-    ASSERT(ip_ != 0);
-    ASSERT(sp_ != 0);
-    ASSERT(fp_ != 0);
+void Interpreter::PopulateFunctionTable() {
+    
+    // V4: push receiver variable
+    for (auto op = 0; op < 16; ++op) {
+        funcTable_.push_back([](Context& context) {
+            FATAL("Unused bytecode");
+        });
+    }
+    
+    for (auto op = 16; op < 32; ++op) {
+        funcTable_.push_back([](Context& context) {
+            context.i->PushLiteralVariable(context.op - 16);
+        });
+    }
+    
+    for (auto op = 32; op < 64; ++op) {
+        funcTable_.push_back([](Context& context) {
+            context.i->PushLiteral(context.op - 32);
+        });
+    }
+    
+    for (auto op = 64; op < 76; ++op) {
+        funcTable_.push_back([](Context& context) {
+            context.i->PushTemporary(context.op - 64);
+        });
+    }
+    
+    // 76
+    funcTable_.push_back([](Context& context) {
+        context.i->Push(FrameReceiver(context.i->fp_));
+    });
+    
+    // 77
+    funcTable_.push_back([](Context& context) {
+        switch (context.extB) {
+            case 0:
+                context.i->Push(context.i->false_);
+                break;
+            case 1:
+                context.i->Push(context.i->true_);
+                break;
+            case 2:
+                context.i->Push(context.i->nil_);
+                break;
+            case 3:
+                FATAL("Unused bytecode");  // V4: push thisContext
+                break;
+            default:
+                context.i->PushEnclosingObject(-context.extB);
+                break;
+        }
+        context.extB = 0;
+    });
+    
+    // 78
+    funcTable_.push_back([](Context& context) {
+        context.i->Push(SmallInteger::New(0));
+    });
+    
+    // 79
+    funcTable_.push_back([](Context& context) {
+        context.i->Push(SmallInteger::New(1));
+    });
+    
+    // 80
+    funcTable_.push_back([](Context& context) {
+        // +
+        const auto& left = context.i->Stack(1);
+        const auto& right = context.i->Stack(0);
+        if (left.IsSmallInteger() && right.IsSmallInteger()) {
+            const auto raw_left = static_cast<SmallInteger>(left).value();
+            const auto raw_right = static_cast<SmallInteger>(right).value();
+            const auto raw_result = raw_left + raw_right;
+            if (SmallInteger::IsSmiValue(raw_result)) {
+                context.i->PopNAndPush(2, SmallInteger::New(raw_result));
+                return;
+            }
+        }
+        context.i->CommonSend(context.op - 80);
+    });
+    
+    // 81
+    funcTable_.push_back([](Context& context) {
 
-    uint8_t byte1 = *ip_++;
-    switch (byte1) {
-    case 0: case 1: case 2: case 3: case 4: case 5: case 6: case 7:
-    case 8: case 9: case 10: case 11: case 12: case 13: case 14: case 15:
-      FATAL("Unused bytecode");  // V4: push receiver variable
-      break;
-    case 16: case 17: case 18: case 19: case 20: case 21: case 22: case 23:
-    case 24: case 25: case 26: case 27: case 28: case 29: case 30: case 31:
-      PushLiteralVariable(byte1 - 16);
-      break;
-    case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39:
-    case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47:
-    case 48: case 49: case 50: case 51: case 52: case 53: case 54: case 55:
-    case 56: case 57: case 58: case 59: case 60: case 61: case 62: case 63:
-      PushLiteral(byte1 - 32);
-      break;
-    case 64: case 65: case 66: case 67: case 68: case 69: case 70: case 71:
-    case 72: case 73: case 74: case 75:
-      PushTemporary(byte1 - 64);
-      break;
-    case 76:
-      Push(FrameReceiver(fp_));
-      break;
-    case 77:
-      switch (extB) {
-        case 0:
-          Push(false_);
-          break;
-        case 1:
-          Push(true_);
-          break;
-        case 2:
-          Push(nil_);
-          break;
-        case 3:
-          FATAL("Unused bytecode");  // V4: push thisContext
-          break;
-        default:
-          PushEnclosingObject(-extB);
-          break;
-      }
-      extB = 0;
-      break;
-    case 78:
-      Push(SmallInteger::New(0));
-      break;
-    case 79:
-      Push(SmallInteger::New(1));
-      break;
-#if STATIC_PREDICTION_BYTECODES
-    case 80: {
-      // +
-      Object left = Stack(1);
-      Object right = Stack(0);
-      if (left->IsSmallInteger() && right->IsSmallInteger()) {
-        intptr_t raw_left = static_cast<SmallInteger>(left)->value();
-        intptr_t raw_right = static_cast<SmallInteger>(right)->value();
-        intptr_t raw_result = raw_left + raw_right;
-        if (SmallInteger::IsSmiValue(raw_result)) {
-          PopNAndPush(2, SmallInteger::New(raw_result));
-          break;
+        // -
+        const auto& left = context.i->Stack(1);
+        const auto& right = context.i->Stack(0);
+        if (left.IsSmallInteger() && right.IsSmallInteger()) {
+            const auto raw_left = static_cast<SmallInteger>(left).value();
+            const auto raw_right = static_cast<SmallInteger>(right).value();
+            const auto raw_result = raw_left - raw_right;
+            if (SmallInteger::IsSmiValue(raw_result)) {
+                context.i->PopNAndPush(2, SmallInteger::New(raw_result));
+                return;
+            }
         }
-      }
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 81: {
-      // -
-      Object left = Stack(1);
-      Object right = Stack(0);
-      if (left->IsSmallInteger() && right->IsSmallInteger()) {
-        intptr_t raw_left = static_cast<SmallInteger>(left)->value();
-        intptr_t raw_right = static_cast<SmallInteger>(right)->value();
-        intptr_t raw_result = raw_left - raw_right;
-        if (SmallInteger::IsSmiValue(raw_result)) {
-          PopNAndPush(2, SmallInteger::New(raw_result));
-          break;
+        context.i->CommonSend(context.op - 80);
+    });
+    
+    // 82
+    funcTable_.push_back([](Context& context) {
+        // <
+        const auto& left = context.i->Stack(1);
+        const auto& right = context.i->Stack(0);
+        if (left.IsSmallInteger() && right.IsSmallInteger()) {
+            if (static_cast<intptr_t>(left) <
+                static_cast<intptr_t>(right)) {
+                context.i->PopNAndPush(2, context.i->true_);
+            } else {
+                context.i->PopNAndPush(2, context.i->false_);
+            }
+            return;
         }
-      }
-      CommonSend(byte1 - 80);
-      break;
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 83
+    funcTable_.push_back([](Context& context) {
+        // >
+        const auto& left = context.i->Stack(1);
+        const auto& right = context.i->Stack(0);
+        if (left.IsSmallInteger() && right.IsSmallInteger()) {
+            if (static_cast<intptr_t>(left) >
+                static_cast<intptr_t>(right)) {
+                context.i->PopNAndPush(2, context.i->true_);
+            } else {
+                context.i->PopNAndPush(2, context.i->false_);
+            }
+            return;
+        }
+        context.i->CommonSend(context.op - 80);
+    });
+    
+    // 84
+    funcTable_.push_back([](Context& context) {
+        // <=
+        const auto& left = context.i->Stack(1);
+        const auto& right = context.i->Stack(0);
+        if (left.IsSmallInteger() && right.IsSmallInteger()) {
+            if (static_cast<intptr_t>(left) <=
+                static_cast<intptr_t>(right)) {
+                context.i->PopNAndPush(2, context.i->true_);
+            } else {
+                context.i->PopNAndPush(2, context.i->false_);
+            }
+            return;
+        }
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 85
+    funcTable_.push_back([](Context& context) {
+        // >=
+        const auto& left = context.i->Stack(1);
+        const auto& right = context.i->Stack(0);
+        if (left.IsSmallInteger() && right.IsSmallInteger()) {
+            if (static_cast<intptr_t>(left) >=
+                static_cast<intptr_t>(right)) {
+                context.i->PopNAndPush(2, context.i->true_);
+            } else {
+                context.i->PopNAndPush(2, context.i->false_);
+            }
+            return;
+        }
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 86
+    funcTable_.push_back([](Context& context) {
+        // =
+        const auto& left = context.i->Stack(1);
+        const auto& right = context.i->Stack(0);
+        if (left.IsSmallInteger() && right.IsSmallInteger()) {
+            if (static_cast<intptr_t>(left) ==
+                static_cast<intptr_t>(right)) {
+                context.i->PopNAndPush(2, context.i->true_);
+            } else {
+                context.i->PopNAndPush(2, context.i->false_);
+            }
+            return;
+        }
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 87
+    funcTable_.push_back([](Context& context) {
+        // ~=
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 88
+    funcTable_.push_back([](Context& context) {
+        // *
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 89
+    funcTable_.push_back([](Context& context) {
+        // /
+        context.i->CommonSend(context.op - 80);
+    });
+    
+    
+    // 90
+    funcTable_.push_back([](Context& context) {
+        /* \\ */
+        const auto& left = context.i->Stack(1);
+        const auto& right = context.i->Stack(0);
+        if (left.IsSmallInteger() && right.IsSmallInteger()) {
+            const auto raw_left = static_cast<SmallInteger>(left).value();
+            const auto raw_right = static_cast<SmallInteger>(right).value();
+            if (raw_right != 0) {
+                const auto raw_result = Math::FloorMod(raw_left, raw_right);
+                ASSERT(SmallInteger::IsSmiValue(raw_result));
+                context.i->PopNAndPush(2, SmallInteger::New(raw_result));
+                return;
+            }
+        }
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 91
+    funcTable_.push_back([](Context& context) {
+        // @
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 92
+    funcTable_.push_back([](Context& context) {
+        // bitShift:
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 93
+    funcTable_.push_back([](Context& context) {
+        // //
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 94
+    funcTable_.push_back([](Context& context) {
+        // bitAnd:
+        const auto& left = context.i->Stack(1);
+        const auto& right = context.i->Stack(0);
+        if (left.IsSmallInteger() && right.IsSmallInteger()) {
+            const auto raw_left = static_cast<SmallInteger>(left).value();
+            const auto raw_right = static_cast<SmallInteger>(right).value();
+            const auto raw_result = raw_left & raw_right;
+            context.i->PopNAndPush(2, SmallInteger::New(raw_result));
+            return;
+        }
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 95
+    funcTable_.push_back([](Context& context) {
+        // bitOr:
+        const auto& left = context.i->Stack(1);
+        const auto& right = context.i->Stack(0);
+        if (left.IsSmallInteger() && right.IsSmallInteger()) {
+            const auto raw_left = static_cast<SmallInteger>(left).value();
+            const auto raw_right = static_cast<SmallInteger>(right).value();
+            const auto raw_result = raw_left | raw_right;
+            context.i->PopNAndPush(2, SmallInteger::New(raw_result));
+            return;
+        }
+        context.i->CommonSend(context.op - 80);
+    });
+    
+    
+    // 96
+    funcTable_.push_back([](Context& context) {
+        // at:
+        const auto& array = context.i->Stack(1);
+        SmallInteger index = static_cast<SmallInteger>(context.i->Stack(0));
+        if (index->IsSmallInteger()) {
+            intptr_t raw_index = index->value() - 1;
+            if (array.IsArray()) {
+                if ((raw_index >= 0) &&
+                    (raw_index < static_cast<Array>(array)->Size())) {
+                    Object value = static_cast<Array>(array)->element(raw_index);
+                    context.i->PopNAndPush(2, value);
+                    return;
+                }
+            } else if (array.IsBytes()) {
+                if ((raw_index >= 0) &&
+                    (raw_index < static_cast<Bytes>(array)->Size())) {
+                    const auto raw_value = static_cast<Bytes>(array)->element(raw_index);
+                    context.i->PopNAndPush(2, SmallInteger::New(raw_value));
+                    return;
+                }
+            }
+        }
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 97
+    funcTable_.push_back([](Context& context) {
+        // at:put:
+        const auto& array = context.i->Stack(2);
+        SmallInteger index = static_cast<SmallInteger>(context.i->Stack(1));
+        if (index->IsSmallInteger()) {
+            intptr_t raw_index = index->value() - 1;
+            if (array.IsArray()) {
+                if ((raw_index >= 0) &&
+                    (raw_index < static_cast<Array>(array)->Size())) {
+                    Object value = context.i->Stack(0);
+                    static_cast<Array>(array)->set_element(raw_index, value);
+                    context.i->PopNAndPush(3, value);
+                    return;
+                }
+            } else if (array.IsByteArray()) {
+                SmallInteger value = static_cast<SmallInteger>(context.i->Stack(0));
+                if ((raw_index >= 0) &&
+                    (raw_index < static_cast<ByteArray>(array)->Size()) &&
+                    static_cast<uword>(value) <= 255) {
+                    static_cast<ByteArray>(array)->set_element(raw_index,
+                                                               value->value());
+                    context.i->PopNAndPush(3, value);
+                    return;
+                }
+            }
+        }
+        context.i->CommonSend(context.op - 80);
+    });
+
+    // 98
+    funcTable_.push_back([](Context& context) {
+        // size
+        const auto& array = context.i->Stack(0);
+        if (array.IsArray()) {
+            context.i->PopNAndPush(1, static_cast<Array>(array)->size());
+            return;
+        } else if (array.IsBytes()) {
+            context.i->PopNAndPush(1, static_cast<Bytes>(array)->size());
+            return;
+        }
+        context.i->CommonSend(context.op - 80);
+    });
+
+    for (auto op = 99; op < 112; ++op) {
+        funcTable_.push_back([](Context& context) {
+            context.i->CommonSend(context.op - 80);
+        });
     }
-    case 82: {
-      // <
-      Object left = Stack(1);
-      Object right = Stack(0);
-      if (left->IsSmallInteger() && right->IsSmallInteger()) {
-        if (static_cast<intptr_t>(left) <
-            static_cast<intptr_t>(right)) {
-          PopNAndPush(2, true_);
+
+    for (auto op = 112; op < 128; ++op) {
+        funcTable_.push_back([](Context& context) {
+            context.i->OrdinarySend(context.op & 15, 0);
+        });
+    }
+    
+    for (auto op = 128; op < 144; ++op) {
+        funcTable_.push_back([](Context& context) {
+            context.i->OrdinarySend(context.op & 15, 1);
+        });
+    }
+    
+    for (auto op = 144; op < 160; ++op) {
+        funcTable_.push_back([](Context& context) {
+            context.i->OrdinarySend(context.op & 15, 2);
+        });
+    }
+
+    for (auto op = 160; op < 176; ++op) {
+        funcTable_.push_back([](Context& context) {
+            context.i->ImplicitReceiverSend(context.op & 15, 0);
+        });
+    }
+
+    for (auto op = 176; op < 184; ++op) {
+        funcTable_.push_back([](Context& context) {
+            // V4: pop into receiver variable
+            FATAL("Unused bytecode");
+        });
+    }
+    
+    for (auto op = 184; op < 192; ++op) {
+        funcTable_.push_back([](Context& context) {
+            context.i->PopIntoTemporary(context.op & 7);
+        });
+    }
+
+    for (auto op = 192; op < 216; ++op) {
+        funcTable_.push_back([](Context& context) {
+            FATAL("Unused bytecode");
+        });
+    }
+
+    // 216
+    funcTable_.push_back([](Context& context) {
+        context.i->MethodReturn(FrameReceiver(context.i->fp_));
+    });
+    
+    // 217
+    funcTable_.push_back([](Context& context) {
+        context.i->MethodReturn(context.i->Pop());
+    });
+    
+    // 218
+    funcTable_.push_back([](Context& context) {
+        ASSERT(FlagsIsClosure(FrameFlags(context.i->fp_)));
+        context.i->LocalReturn(context.i->Pop());
+    });
+    
+    // 219
+    funcTable_.push_back([](Context& context) {
+        context.i->Push(context.i->Stack(0));
+    });
+    
+    // 220
+    funcTable_.push_back([](Context& context) {
+        context.i->Drop(1);
+    });
+
+    // 221
+    funcTable_.push_back([](Context& context) {
+        // V4: nop
+        FATAL("Unused bytecode");
+    });
+
+    // 222
+    funcTable_.push_back([](Context& context) {
+        // V4: break
+        FATAL("Unused bytecode");
+    });
+
+    // 223
+    funcTable_.push_back([](Context& context) {
+        // V4: not assigned
+        FATAL("Unused bytecode");
+    });
+
+    // 224
+    funcTable_.push_back([](Context& context) {
+        const auto byte2 = context.i->GetAndIncrementIP();
+        context.extA = (context.extA << 8) + byte2;
+    });
+
+    // 225
+    funcTable_.push_back([](Context& context) {
+        const auto byte2 = context.i->GetAndIncrementIP();
+        if (context.extB == 0 && byte2 > 127) {
+            context.extB = byte2 - 256;
         } else {
-          PopNAndPush(2, false_);
+            context.extB = (context.extB << 8) + byte2;
         }
-        break;
-      }
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 83: {
-      // >
-      Object left = Stack(1);
-      Object right = Stack(0);
-      if (left->IsSmallInteger() && right->IsSmallInteger()) {
-        if (static_cast<intptr_t>(left) >
-            static_cast<intptr_t>(right)) {
-          PopNAndPush(2, true_);
+    });
+
+    // 226
+    funcTable_.push_back([](Context& context) {
+        // V4: push receiver variable
+        FATAL("Unused bytecode");
+    });
+
+    // 227
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        context.i->PushLiteralVariable((context.extA << 8) + byte2);
+        context.extA = 0;
+    });
+
+    // 228
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        context.i->PushLiteral(byte2 + context.extA * 256);
+        context.extA = 0;
+    });
+
+    // 229
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        context.i->Push(SmallInteger::New((context.extB << 8) + byte2));
+        context.extB = 0;
+    });
+
+    // 230
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        context.i->PushTemporary(byte2);
+    });
+
+    // 231
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        if (byte2 < 128) {
+            context.i->PushNewArray(byte2);
         } else {
-          PopNAndPush(2, false_);
+            context.i->PushNewArrayWithElements(byte2 - 128);
         }
-        break;
-      }
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 84: {
-      // <=
-      Object left = Stack(1);
-      Object right = Stack(0);
-      if (left->IsSmallInteger() && right->IsSmallInteger()) {
-        if (static_cast<intptr_t>(left) <=
-            static_cast<intptr_t>(right)) {
-          PopNAndPush(2, true_);
+    });
+
+    // 232
+    funcTable_.push_back([](Context& context) {
+        // V4: store into receiver variable
+        FATAL("Unused bytecode");
+    });
+
+    // 233
+    funcTable_.push_back([](Context& context) {
+        // V4: store into literal variable
+        FATAL("Unused bytecode");
+    });
+
+    // 234
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        context.i->StoreIntoTemporary(byte2);
+    });
+
+    // 235
+    funcTable_.push_back([](Context& context) {
+        // V4: pop into receiver variable
+        FATAL("Unused bytecode");
+    });
+
+    // 236
+    funcTable_.push_back([](Context& context) {
+        // V4: pop into literal variable
+        FATAL("Unused bytecode");
+    });
+
+    // 237
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        context.i->PopIntoTemporary(byte2);
+
+    });
+
+    // 238
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        intptr_t selector_index = (context.extA << 5) + (byte2 >> 3);
+        intptr_t num_args = (context.extB << 3) | (byte2 & 7);
+        context.extA = context.extB = 0;
+        context.i->OrdinarySend(selector_index, num_args);
+    });
+
+    // 239
+    funcTable_.push_back([](Context& context) {
+        // V4: static super send
+        FATAL("Unused bytecode");
+    });
+
+    // 240
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        intptr_t selector_index = (context.extA << 5) + (byte2 >> 3);
+        intptr_t num_args = (context.extB << 3) | (byte2 & 7);
+        context.extA = context.extB = 0;
+        context.i->ImplicitReceiverSend(selector_index, num_args);
+    });
+
+    // 241
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        intptr_t selector_index = (context.extA << 5) + (byte2 >> 3);
+        intptr_t num_args = (context.extB << 3) | (byte2 & 7);
+        context.extA = context.extB = 0;
+        context.i->SuperSend(selector_index, num_args);
+    });
+
+    // 242
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        intptr_t delta = (context.extB << 8) + byte2;
+        context.extB = 0;
+        context.i->ip_ += delta;
+    });
+
+    // 243
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        intptr_t delta = (context.extB << 8) + byte2;
+        context.extB = 0;
+        Object top = context.i->Pop();
+        if (top == context.i->false_) {
+        } else if (top == context.i->true_) {
+            context.i->ip_ += delta;
         } else {
-          PopNAndPush(2, false_);
+            context.i->SendNonBooleanReceiver(top);
         }
-        break;
-      }
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 85: {
-      // >=
-      Object left = Stack(1);
-      Object right = Stack(0);
-      if (left->IsSmallInteger() && right->IsSmallInteger()) {
-        if (static_cast<intptr_t>(left) >=
-            static_cast<intptr_t>(right)) {
-          PopNAndPush(2, true_);
+    });
+
+    // 244
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        intptr_t delta = (context.extB << 8) + byte2;
+        context.extB = 0;
+        Object top = context.i->Pop();
+        if (top == context.i->true_) {
+        } else if (top == context.i->false_) {
+            context.i->ip_ += delta;
         } else {
-          PopNAndPush(2, false_);
+            context.i->SendNonBooleanReceiver(top);
         }
-        break;
-      }
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 86: {
-      // =
-      Object left = Stack(1);
-      Object right = Stack(0);
-      if (left->IsSmallInteger() && right->IsSmallInteger()) {
-        if (static_cast<intptr_t>(left) ==
-            static_cast<intptr_t>(right)) {
-          PopNAndPush(2, true_);
-        } else {
-          PopNAndPush(2, false_);
-        }
-        break;
-      }
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 87: {
-      // ~=
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 88: {
-      // *
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 89: {
-      // /
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 90: {
-      /* \\ */
-      Object left = Stack(1);
-      Object right = Stack(0);
-      if (left->IsSmallInteger() && right->IsSmallInteger()) {
-        intptr_t raw_left = static_cast<SmallInteger>(left)->value();
-        intptr_t raw_right = static_cast<SmallInteger>(right)->value();
-        if (raw_right != 0) {
-          intptr_t raw_result = Math::FloorMod(raw_left, raw_right);
-          ASSERT(SmallInteger::IsSmiValue(raw_result));
-          PopNAndPush(2, SmallInteger::New(raw_result));
-          break;
-        }
-      }
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 91: {
-      // @
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 92: {
-      // bitShift:
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 93: {
-      // //
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 94: {
-      // bitAnd:
-      Object left = Stack(1);
-      Object right = Stack(0);
-      if (left->IsSmallInteger() && right->IsSmallInteger()) {
-        intptr_t raw_left = static_cast<SmallInteger>(left)->value();
-        intptr_t raw_right = static_cast<SmallInteger>(right)->value();
-        intptr_t raw_result = raw_left & raw_right;
-        PopNAndPush(2, SmallInteger::New(raw_result));
-        break;
-      }
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 95: {
-      // bitOr:
-      Object left = Stack(1);
-      Object right = Stack(0);
-      if (left->IsSmallInteger() && right->IsSmallInteger()) {
-        intptr_t raw_left = static_cast<SmallInteger>(left)->value();
-        intptr_t raw_right = static_cast<SmallInteger>(right)->value();
-        intptr_t raw_result = raw_left | raw_right;
-        PopNAndPush(2, SmallInteger::New(raw_result));
-        break;
-      }
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 96: {
-      // at:
-      Object array = Stack(1);
-      SmallInteger index = static_cast<SmallInteger>(Stack(0));
-      if (index->IsSmallInteger()) {
-        intptr_t raw_index = index->value() - 1;
-        if (array->IsArray()) {
-          if ((raw_index >= 0) &&
-              (raw_index < static_cast<Array>(array)->Size())) {
-            Object value = static_cast<Array>(array)->element(raw_index);
-            PopNAndPush(2, value);
-            break;
-          }
-        } else if (array->IsBytes()) {
-          if ((raw_index >= 0) &&
-              (raw_index < static_cast<Bytes>(array)->Size())) {
-            uint8_t raw_value = static_cast<Bytes>(array)->element(raw_index);
-            PopNAndPush(2, SmallInteger::New(raw_value));
-            break;
-          }
-        }
-      }
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 97: {
-      // at:put:
-      Object array = Stack(2);
-      SmallInteger index = static_cast<SmallInteger>(Stack(1));
-      if (index->IsSmallInteger()) {
-        intptr_t raw_index = index->value() - 1;
-        if (array->IsArray()) {
-          if ((raw_index >= 0) &&
-              (raw_index < static_cast<Array>(array)->Size())) {
-            Object value = Stack(0);
-            static_cast<Array>(array)->set_element(raw_index, value);
-            PopNAndPush(3, value);
-            break;
-          }
-        } else if (array->IsByteArray()) {
-          SmallInteger value = static_cast<SmallInteger>(Stack(0));
-          if ((raw_index >= 0) &&
-              (raw_index < static_cast<ByteArray>(array)->Size()) &&
-              static_cast<uword>(value) <= 255) {
-            static_cast<ByteArray>(array)->set_element(raw_index,
-                                                        value->value());
-            PopNAndPush(3, value);
-            break;
-          }
-        }
-      }
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 98: {
-      // size
-      Object array = Stack(0);
-      if (array->IsArray()) {
-        PopNAndPush(1, static_cast<Array>(array)->size());
-        break;
-      } else if (array->IsBytes()) {
-        PopNAndPush(1, static_cast<Bytes>(array)->size());
-        break;
-      }
-      CommonSend(byte1 - 80);
-      break;
-    }
-    case 99: case 100: case 101: case 102: case 103:
-    case 104: case 105: case 106: case 107:
-    case 108: case 109: case 110: case 111:
-      CommonSend(byte1 - 80);
-      break;
-#else  // !STATIC_PREDICTION_BYTECODES
-    case 80: case 81: case 82: case 83:
-    case 84: case 85: case 86: case 87:
-    case 88: case 89: case 90: case 91:
-    case 92: case 93: case 94: case 95:
-      CommonSend(byte1 - 80);
-      break;
-    case 96: case 97: case 98: case 99:
-    case 100: case 101: case 102: case 103:
-    case 104: case 105: case 106: case 107:
-    case 108: case 109: case 110: case 111:
-      CommonSend(byte1 - 80);
-      break;
-#endif  // STATIC_PREDICTION_BYTECODES
-    case 112: case 113: case 114: case 115:
-    case 116: case 117: case 118: case 119:
-    case 120: case 121: case 122: case 123:
-    case 124: case 125: case 126: case 127:
-      OrdinarySend(byte1 & 15, 0);
-      break;
-    case 128: case 129: case 130: case 131:
-    case 132: case 133: case 134: case 135:
-    case 136: case 137: case 138: case 139:
-    case 140: case 141: case 142: case 143:
-      OrdinarySend(byte1 & 15, 1);
-      break;
-    case 144: case 145: case 146: case 147:
-    case 148: case 149: case 150: case 151:
-    case 152: case 153: case 154: case 155:
-    case 156: case 157: case 158: case 159:
-      OrdinarySend(byte1 & 15, 2);
-      break;
-    case 160: case 161: case 162: case 163:
-    case 164: case 165: case 166: case 167:
-    case 168: case 169: case 170: case 171:
-    case 172: case 173: case 174: case 175:
-      ImplicitReceiverSend(byte1 & 15, 0);
-      break;
-    case 176: case 177: case 178: case 179:
-    case 180: case 181: case 182: case 183:
-      FATAL("Unused bytecode");  // V4: pop into receiver variable
-      break;
-    case 184: case 185: case 186: case 187:
-    case 188: case 189: case 190: case 191:
-      PopIntoTemporary(byte1 & 7);
-      break;
-    case 192: case 193: case 194: case 195:  // V4: short jump
-    case 196: case 197: case 198: case 199:  // V4: short jump
-    case 200: case 201: case 202: case 203:  // V4: short branch true
-    case 204: case 205: case 206: case 207:  // V4: short branch true
-    case 208: case 209: case 210: case 211:  // V4: short branch false
-    case 212: case 213: case 214: case 215:  // V4: short branch false
-      FATAL("Unused bytecode");
-      break;
-    case 216:
-      MethodReturn(FrameReceiver(fp_));
-      break;
-    case 217:
-      MethodReturn(Pop());
-      break;
-    case 218:
-      ASSERT(FlagsIsClosure(FrameFlags(fp_)));
-      LocalReturn(Pop());
-      break;
-    case 219:
-      Push(Stack(0));
-      break;
-    case 220:
-      Drop(1);
-      break;
-    case 221:  // V4: nop
-    case 222:  // V4: break
-    case 223:  // V4: not assigned
-      FATAL("Unused bytecode");
-      break;
-    case 224: {
-      uint8_t byte2 = *ip_++;
-      extA = (extA << 8) + byte2;
-      break;
-    }
-    case 225: {
-      uint8_t byte2 = *ip_++;
-      if (extB == 0 && byte2 > 127) {
-        extB = byte2 - 256;
-      } else {
-        extB = (extB << 8) + byte2;
-      }
-      break;
-    }
-    case 226:
-      FATAL("Unused bytecode");  // V4: push receiver variable
-      break;
-    case 227: {
-      uint8_t byte2 = *ip_++;
-      PushLiteralVariable((extA << 8) + byte2);
-      extA = 0;
-      break;
-    }
-    case 228: {
-      uint8_t byte2 = *ip_++;
-      PushLiteral(byte2 + extA * 256);
-      extA = 0;
-      break;
-    }
-    case 229: {
-      uint8_t byte2 = *ip_++;
-      Push(SmallInteger::New((extB << 8) + byte2));
-      extB = 0;
-      break;
-    }
-    case 230: {
-      uint8_t byte2 = *ip_++;
-      PushTemporary(byte2);
-      break;
-    }
-    case 231: {
-      uint8_t byte2 = *ip_++;
-      if (byte2 < 128) {
-        PushNewArray(byte2);
-      } else {
-        PushNewArrayWithElements(byte2 - 128);
-      }
-      break;
-    }
-    case 232:  // V4: store into receiver variable
-    case 233:  // V4: store into literal variable
-      FATAL("Unused bytecode");
-      break;
-    case 234: {
-      uint8_t byte2 = *ip_++;
-      StoreIntoTemporary(byte2);
-      break;
-    }
-    case 235:  // V4: pop into receiver variable
-    case 236:  // V4: pop into literal variable
-      FATAL("Unused bytecode");
-      break;
-    case 237: {
-      uint8_t byte2 = *ip_++;
-      PopIntoTemporary(byte2);
-      break;
-    }
-    case 238: {
-      uint8_t byte2 = *ip_++;
-      intptr_t selector_index = (extA << 5) + (byte2 >> 3);
-      intptr_t num_args = (extB << 3) | (byte2 & 7);
-      extA = extB = 0;
-      OrdinarySend(selector_index, num_args);
-      break;
-    }
-    case 239:
-      FATAL("Unused bytecode");  // V4: static super send
-      break;
-    case 240: {
-      uint8_t byte2 = *ip_++;
-      intptr_t selector_index = (extA << 5) + (byte2 >> 3);
-      intptr_t num_args = (extB << 3) | (byte2 & 7);
-      extA = extB = 0;
-      ImplicitReceiverSend(selector_index, num_args);
-      break;
-    }
-    case 241: {
-      uint8_t byte2 = *ip_++;
-      intptr_t selector_index = (extA << 5) + (byte2 >> 3);
-      intptr_t num_args = (extB << 3) | (byte2 & 7);
-      extA = extB = 0;
-      SuperSend(selector_index, num_args);
-      break;
-    }
-    case 242: {
-      uint8_t byte2 = *ip_++;
-      intptr_t delta = (extB << 8) + byte2;
-      extB = 0;
-      ip_ += delta;
-      break;
-    }
-    case 243: {
-      uint8_t byte2 = *ip_++;
-      intptr_t delta = (extB << 8) + byte2;
-      extB = 0;
-      Object top = Pop();
-      if (top == false_) {
-      } else if (top == true_) {
-        ip_ += delta;
-      } else {
-        SendNonBooleanReceiver(top);
-      }
-      break;
-    }
-    case 244: {
-      uint8_t byte2 = *ip_++;
-      intptr_t delta = (extB << 8) + byte2;
-      extB = 0;
-      Object top = Pop();
-      if (top == true_) {
-      } else if (top == false_) {
-        ip_ += delta;
-      } else {
-        SendNonBooleanReceiver(top);
-      }
-      break;
-    }
-    case 245: {
-      uint8_t byte2 = *ip_++;
-      intptr_t selector_index = (extA << 5) + (byte2 >> 3);
-      intptr_t num_args = (extB << 3) | (byte2 & 7);
-      extA = extB = 0;
-      SelfSend(selector_index, num_args);
-      break;
-    }
-    case 246:  // V4: unassigned
-    case 247:  // V4: unassigned
-    case 248:  // V4: unassigned
-    case 249:  // V4: call primitive
-      FATAL("Unused bytecode");
-    case 250: {
-      uint8_t byte2 = *ip_++;
-      uint8_t byte3 = *ip_++;
-      PushRemoteTemp(byte3, byte2);
-      break;
-    }
-    case 251: {
-      uint8_t byte2 = *ip_++;
-      uint8_t byte3 = *ip_++;
-      StoreIntoRemoteTemp(byte3, byte2);
-      break;
-    }
-    case 252: {
-      uint8_t byte2 = *ip_++;
-      uint8_t byte3 = *ip_++;
-      PopIntoRemoteTemp(byte3, byte2);
-      break;
-    }
-    case 253: {
-      uint8_t byte2 = *ip_++;
-      uint8_t byte3 = *ip_++;
-      intptr_t num_copied = (byte2 >> 3 & 7) + ((extA / 16) << 3);
-      intptr_t num_args = (byte2 & 7) + ((extA % 16) << 3);
-      intptr_t block_size = byte3 + (extB << 8);
-      extA = extB = 0;
-      PushClosure(num_copied, num_args, block_size);
-      break;
-    }
-    case 254: {
-      uint8_t byte2 = *ip_++;
-      uint8_t byte3 = *ip_++;
-      intptr_t selector_index = (extA << 5) + (byte2 >> 3);
-      intptr_t num_args = (extB << 3) | (byte2 & 7);
-      intptr_t depth = byte3;
-      extA = extB = 0;
-      OuterSend(selector_index, num_args, depth);
-      break;
-    }
-    case 255:
-      FATAL("Unused bytecode");  // V4: unassigned
-      break;
-    default:
-      UNREACHABLE();
-    }
-  }
+    });
+
+    // 245
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        intptr_t selector_index = (context.extA << 5) + (byte2 >> 3);
+        intptr_t num_args = (context.extB << 3) | (byte2 & 7);
+        context.extA = context.extB = 0;
+        context.i->SelfSend(selector_index, num_args);
+    });
+        
+    // 246
+    funcTable_.push_back([](Context& context) {
+        // V4: unassigned
+        FATAL("Unused bytecode");
+    });
+
+    // 247
+    funcTable_.push_back([](Context& context) {
+        // V4: unassigned
+        FATAL("Unused bytecode");
+    });
+
+    // 248
+    funcTable_.push_back([](Context& context) {
+        // V4: unassigned
+        FATAL("Unused bytecode");
+    });
+
+    // 249
+    funcTable_.push_back([](Context& context) {
+        // V4: call primitive
+        FATAL("Unused bytecode");
+    });
+    
+    // 250
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        uint8_t byte3 = context.i->GetAndIncrementIP();
+        context.i->PushRemoteTemp(byte3, byte2);
+    });
+
+    // 251
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        uint8_t byte3 = context.i->GetAndIncrementIP();
+        context.i->StoreIntoRemoteTemp(byte3, byte2);
+    });
+
+    // 252
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        uint8_t byte3 = context.i->GetAndIncrementIP();
+        context.i->PopIntoRemoteTemp(byte3, byte2);
+    });
+
+    // 253
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        uint8_t byte3 = context.i->GetAndIncrementIP();
+        intptr_t num_copied = (byte2 >> 3 & 7) + ((context.extA / 16) << 3);
+        intptr_t num_args = (byte2 & 7) + ((context.extA % 16) << 3);
+        intptr_t block_size = byte3 + (context.extB << 8);
+        context.extA = context.extB = 0;
+        context.i->PushClosure(num_copied, num_args, block_size);
+    });
+
+    // 254
+    funcTable_.push_back([](Context& context) {
+        uint8_t byte2 = context.i->GetAndIncrementIP();
+        uint8_t byte3 = context.i->GetAndIncrementIP();
+        intptr_t selector_index = (context.extA << 5) + (byte2 >> 3);
+        intptr_t num_args = (context.extB << 3) | (byte2 & 7);
+        intptr_t depth = byte3;
+        context.extA = context.extB = 0;
+        context.i->OuterSend(selector_index, num_args, depth);
+    });
+
+    // 255
+    funcTable_.push_back([](Context& context) {
+        FATAL("Unused bytecode");  // V4: unassigned
+    });
 }
 
+#if 0
+void Interpreter::Interpret() {
+    uintptr_t extA = 0;
+    uintptr_t extB = 0;
+    for (;;) {
+        ASSERT(ip_ != 0);
+        ASSERT(sp_ != 0);
+        ASSERT(fp_ != 0);
+        
+        const uint8_t byte1 = *ip_++;
+        //std::cout << (int)byte1 << std::endl;
+        switch (byte1) {
+            case 0: case 1: case 2: case 3: case 4: case 5: case 6: case 7:
+            case 8: case 9: case 10: case 11: case 12: case 13: case 14: case 15:
+                FATAL("Unused bytecode");  // V4: push receiver variable
+                break;
+            case 16: case 17: case 18: case 19: case 20: case 21: case 22: case 23:
+            case 24: case 25: case 26: case 27: case 28: case 29: case 30: case 31:
+                PushLiteralVariable(byte1 - 16);
+                break;
+            case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39:
+            case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47:
+            case 48: case 49: case 50: case 51: case 52: case 53: case 54: case 55:
+            case 56: case 57: case 58: case 59: case 60: case 61: case 62: case 63:
+                PushLiteral(byte1 - 32);
+                break;
+            case 64: case 65: case 66: case 67: case 68: case 69: case 70: case 71:
+            case 72: case 73: case 74: case 75:
+                PushTemporary(byte1 - 64);
+                break;
+            case 76:
+                Push(FrameReceiver(fp_));
+                break;
+            case 77:
+                switch (extB) {
+                    case 0:
+                        Push(false_);
+                        break;
+                    case 1:
+                        Push(true_);
+                        break;
+                    case 2:
+                        Push(nil_);
+                        break;
+                    case 3:
+                        FATAL("Unused bytecode");  // V4: push thisContext
+                        break;
+                    default:
+                        PushEnclosingObject(-extB);
+                        break;
+                }
+                extB = 0;
+                break;
+            case 78:
+                Push(SmallInteger::New(0));
+                break;
+            case 79:
+                Push(SmallInteger::New(1));
+                break;
+#if STATIC_PREDICTION_BYTECODES
+            case 80: {
+                // +
+                const auto& left = Stack(1);
+                const auto& right = Stack(0);
+                if (left.IsSmallInteger() && right.IsSmallInteger()) {
+                    const auto raw_left = static_cast<SmallInteger>(left).value();
+                    const auto raw_right = static_cast<SmallInteger>(right).value();
+                    const auto raw_result = raw_left + raw_right;
+                    if (SmallInteger::IsSmiValue(raw_result)) {
+                        PopNAndPush(2, SmallInteger::New(raw_result));
+                        break;
+                    }
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 81: {
+                // -
+                const auto& left = Stack(1);
+                const auto& right = Stack(0);
+                if (left.IsSmallInteger() && right.IsSmallInteger()) {
+                    const auto raw_left = static_cast<SmallInteger>(left).value();
+                    const auto raw_right = static_cast<SmallInteger>(right).value();
+                    const auto raw_result = raw_left - raw_right;
+                    if (SmallInteger::IsSmiValue(raw_result)) {
+                        PopNAndPush(2, SmallInteger::New(raw_result));
+                        break;
+                    }
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 82: {
+                // <
+                const auto& left = Stack(1);
+                const auto& right = Stack(0);
+                if (left.IsSmallInteger() && right.IsSmallInteger()) {
+                    if (static_cast<intptr_t>(left) <
+                        static_cast<intptr_t>(right)) {
+                        PopNAndPush(2, true_);
+                    } else {
+                        PopNAndPush(2, false_);
+                    }
+                    break;
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 83: {
+                // >
+                const auto& left = Stack(1);
+                const auto& right = Stack(0);
+                if (left.IsSmallInteger() && right.IsSmallInteger()) {
+                    if (static_cast<intptr_t>(left) >
+                        static_cast<intptr_t>(right)) {
+                        PopNAndPush(2, true_);
+                    } else {
+                        PopNAndPush(2, false_);
+                    }
+                    break;
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 84: {
+                // <=
+                const auto& left = Stack(1);
+                const auto& right = Stack(0);
+                if (left.IsSmallInteger() && right.IsSmallInteger()) {
+                    if (static_cast<intptr_t>(left) <=
+                        static_cast<intptr_t>(right)) {
+                        PopNAndPush(2, true_);
+                    } else {
+                        PopNAndPush(2, false_);
+                    }
+                    break;
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 85: {
+                // >=
+                const auto& left = Stack(1);
+                const auto& right = Stack(0);
+                if (left.IsSmallInteger() && right.IsSmallInteger()) {
+                    if (static_cast<intptr_t>(left) >=
+                        static_cast<intptr_t>(right)) {
+                        PopNAndPush(2, true_);
+                    } else {
+                        PopNAndPush(2, false_);
+                    }
+                    break;
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 86: {
+                // =
+                const auto& left = Stack(1);
+                const auto& right = Stack(0);
+                if (left.IsSmallInteger() && right.IsSmallInteger()) {
+                    if (static_cast<intptr_t>(left) ==
+                        static_cast<intptr_t>(right)) {
+                        PopNAndPush(2, true_);
+                    } else {
+                        PopNAndPush(2, false_);
+                    }
+                    break;
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 87: {
+                // ~=
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 88: {
+                // *
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 89: {
+                // /
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 90: {
+                /* \\ */
+                const auto& left = Stack(1);
+                const auto& right = Stack(0);
+                if (left.IsSmallInteger() && right.IsSmallInteger()) {
+                    const auto raw_left = static_cast<SmallInteger>(left).value();
+                    const auto raw_right = static_cast<SmallInteger>(right).value();
+                    if (raw_right != 0) {
+                        const auto raw_result = Math::FloorMod(raw_left, raw_right);
+                        ASSERT(SmallInteger::IsSmiValue(raw_result));
+                        PopNAndPush(2, SmallInteger::New(raw_result));
+                        break;
+                    }
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 91: {
+                // @
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 92: {
+                // bitShift:
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 93: {
+                // //
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 94: {
+                // bitAnd:
+                const auto& left = Stack(1);
+                const auto& right = Stack(0);
+                if (left.IsSmallInteger() && right.IsSmallInteger()) {
+                    const auto raw_left = static_cast<SmallInteger>(left).value();
+                    const auto raw_right = static_cast<SmallInteger>(right).value();
+                    const auto raw_result = raw_left & raw_right;
+                    PopNAndPush(2, SmallInteger::New(raw_result));
+                    break;
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 95: {
+                // bitOr:
+                const auto& left = Stack(1);
+                const auto& right = Stack(0);
+                if (left.IsSmallInteger() && right.IsSmallInteger()) {
+                    const auto raw_left = static_cast<SmallInteger>(left).value();
+                    const auto raw_right = static_cast<SmallInteger>(right).value();
+                    const auto raw_result = raw_left | raw_right;
+                    PopNAndPush(2, SmallInteger::New(raw_result));
+                    break;
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 96: {
+                // at:
+                const auto& array = Stack(1);
+                SmallInteger index = static_cast<SmallInteger>(Stack(0));
+                if (index->IsSmallInteger()) {
+                    intptr_t raw_index = index->value() - 1;
+                    if (array.IsArray()) {
+                        if ((raw_index >= 0) &&
+                            (raw_index < static_cast<Array>(array)->Size())) {
+                            Object value = static_cast<Array>(array)->element(raw_index);
+                            PopNAndPush(2, value);
+                            break;
+                        }
+                    } else if (array.IsBytes()) {
+                        if ((raw_index >= 0) &&
+                            (raw_index < static_cast<Bytes>(array)->Size())) {
+                            uint8_t raw_value = static_cast<Bytes>(array)->element(raw_index);
+                            PopNAndPush(2, SmallInteger::New(raw_value));
+                            break;
+                        }
+                    }
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 97: {
+                // at:put:
+                const auto& array = Stack(2);
+                SmallInteger index = static_cast<SmallInteger>(Stack(1));
+                if (index->IsSmallInteger()) {
+                    intptr_t raw_index = index->value() - 1;
+                    if (array.IsArray()) {
+                        if ((raw_index >= 0) &&
+                            (raw_index < static_cast<Array>(array)->Size())) {
+                            Object value = Stack(0);
+                            static_cast<Array>(array)->set_element(raw_index, value);
+                            PopNAndPush(3, value);
+                            break;
+                        }
+                    } else if (array.IsByteArray()) {
+                        SmallInteger value = static_cast<SmallInteger>(Stack(0));
+                        if ((raw_index >= 0) &&
+                            (raw_index < static_cast<ByteArray>(array)->Size()) &&
+                            static_cast<uword>(value) <= 255) {
+                            static_cast<ByteArray>(array)->set_element(raw_index,
+                                                                       value->value());
+                            PopNAndPush(3, value);
+                            break;
+                        }
+                    }
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 98: {
+                // size
+                const auto& array = Stack(0);
+                if (array.IsArray()) {
+                    PopNAndPush(1, static_cast<Array>(array)->size());
+                    break;
+                } else if (array.IsBytes()) {
+                    PopNAndPush(1, static_cast<Bytes>(array)->size());
+                    break;
+                }
+                CommonSend(byte1 - 80);
+                break;
+            }
+            case 99: case 100: case 101: case 102: case 103:
+            case 104: case 105: case 106: case 107:
+            case 108: case 109: case 110: case 111:
+                CommonSend(byte1 - 80);
+                break;
+#else  // !STATIC_PREDICTION_BYTECODES
+            case 80: case 81: case 82: case 83:
+            case 84: case 85: case 86: case 87:
+            case 88: case 89: case 90: case 91:
+            case 92: case 93: case 94: case 95:
+                CommonSend(byte1 - 80);
+                break;
+            case 96: case 97: case 98: case 99:
+            case 100: case 101: case 102: case 103:
+            case 104: case 105: case 106: case 107:
+            case 108: case 109: case 110: case 111:
+                CommonSend(byte1 - 80);
+                break;
+#endif  // STATIC_PREDICTION_BYTECODES
+            case 112: case 113: case 114: case 115:
+            case 116: case 117: case 118: case 119:
+            case 120: case 121: case 122: case 123:
+            case 124: case 125: case 126: case 127:
+                OrdinarySend(byte1 & 15, 0);
+                break;
+            case 128: case 129: case 130: case 131:
+            case 132: case 133: case 134: case 135:
+            case 136: case 137: case 138: case 139:
+            case 140: case 141: case 142: case 143:
+                OrdinarySend(byte1 & 15, 1);
+                break;
+            case 144: case 145: case 146: case 147:
+            case 148: case 149: case 150: case 151:
+            case 152: case 153: case 154: case 155:
+            case 156: case 157: case 158: case 159:
+                OrdinarySend(byte1 & 15, 2);
+                break;
+            case 160: case 161: case 162: case 163:
+            case 164: case 165: case 166: case 167:
+            case 168: case 169: case 170: case 171:
+            case 172: case 173: case 174: case 175:
+                ImplicitReceiverSend(byte1 & 15, 0);
+                break;
+            case 176: case 177: case 178: case 179:
+            case 180: case 181: case 182: case 183:
+                FATAL("Unused bytecode");  // V4: pop into receiver variable
+                break;
+            case 184: case 185: case 186: case 187:
+            case 188: case 189: case 190: case 191:
+                PopIntoTemporary(byte1 & 7);
+                break;
+            case 192: case 193: case 194: case 195:  // V4: short jump
+            case 196: case 197: case 198: case 199:  // V4: short jump
+            case 200: case 201: case 202: case 203:  // V4: short branch true
+            case 204: case 205: case 206: case 207:  // V4: short branch true
+            case 208: case 209: case 210: case 211:  // V4: short branch false
+            case 212: case 213: case 214: case 215:  // V4: short branch false
+                FATAL("Unused bytecode");
+                break;
+            case 216:
+                MethodReturn(FrameReceiver(fp_));
+                break;
+            case 217:
+                MethodReturn(Pop());
+                break;
+            case 218:
+                ASSERT(FlagsIsClosure(FrameFlags(fp_)));
+                LocalReturn(Pop());
+                break;
+            case 219:
+                Push(Stack(0));
+                break;
+            case 220:
+                Drop(1);
+                break;
+            case 221:  // V4: nop
+            case 222:  // V4: break
+            case 223:  // V4: not assigned
+                FATAL("Unused bytecode");
+                break;
+            case 224: {
+                uint8_t byte2 = *ip_++;
+                extA = (extA << 8) + byte2;
+                break;
+            }
+            case 225: {
+                uint8_t byte2 = *ip_++;
+                if (extB == 0 && byte2 > 127) {
+                    extB = byte2 - 256;
+                } else {
+                    extB = (extB << 8) + byte2;
+                }
+                break;
+            }
+            case 226:
+                FATAL("Unused bytecode");  // V4: push receiver variable
+                break;
+            case 227: {
+                uint8_t byte2 = *ip_++;
+                PushLiteralVariable((extA << 8) + byte2);
+                extA = 0;
+                break;
+            }
+            case 228: {
+                uint8_t byte2 = *ip_++;
+                PushLiteral(byte2 + extA * 256);
+                extA = 0;
+                break;
+            }
+            case 229: {
+                uint8_t byte2 = *ip_++;
+                Push(SmallInteger::New((extB << 8) + byte2));
+                extB = 0;
+                break;
+            }
+            case 230: {
+                uint8_t byte2 = *ip_++;
+                PushTemporary(byte2);
+                break;
+            }
+            case 231: {
+                uint8_t byte2 = *ip_++;
+                if (byte2 < 128) {
+                    PushNewArray(byte2);
+                } else {
+                    PushNewArrayWithElements(byte2 - 128);
+                }
+                break;
+            }
+            case 232:  // V4: store into receiver variable
+            case 233:  // V4: store into literal variable
+                FATAL("Unused bytecode");
+                break;
+            case 234: {
+                uint8_t byte2 = *ip_++;
+                StoreIntoTemporary(byte2);
+                break;
+            }
+            case 235:  // V4: pop into receiver variable
+            case 236:  // V4: pop into literal variable
+                FATAL("Unused bytecode");
+                break;
+            case 237: {
+                uint8_t byte2 = *ip_++;
+                PopIntoTemporary(byte2);
+                break;
+            }
+            case 238: {
+                uint8_t byte2 = *ip_++;
+                intptr_t selector_index = (extA << 5) + (byte2 >> 3);
+                intptr_t num_args = (extB << 3) | (byte2 & 7);
+                extA = extB = 0;
+                OrdinarySend(selector_index, num_args);
+                break;
+            }
+            case 239:
+                FATAL("Unused bytecode");  // V4: static super send
+                break;
+            case 240: {
+                uint8_t byte2 = *ip_++;
+                intptr_t selector_index = (extA << 5) + (byte2 >> 3);
+                intptr_t num_args = (extB << 3) | (byte2 & 7);
+                extA = extB = 0;
+                ImplicitReceiverSend(selector_index, num_args);
+                break;
+            }
+            case 241: {
+                uint8_t byte2 = *ip_++;
+                intptr_t selector_index = (extA << 5) + (byte2 >> 3);
+                intptr_t num_args = (extB << 3) | (byte2 & 7);
+                extA = extB = 0;
+                SuperSend(selector_index, num_args);
+                break;
+            }
+            case 242: {
+                uint8_t byte2 = *ip_++;
+                intptr_t delta = (extB << 8) + byte2;
+                extB = 0;
+                ip_ += delta;
+                break;
+            }
+            case 243: {
+                uint8_t byte2 = *ip_++;
+                intptr_t delta = (extB << 8) + byte2;
+                extB = 0;
+                Object top = Pop();
+                if (top == false_) {
+                } else if (top == true_) {
+                    ip_ += delta;
+                } else {
+                    SendNonBooleanReceiver(top);
+                }
+                break;
+            }
+            case 244: {
+                uint8_t byte2 = *ip_++;
+                intptr_t delta = (extB << 8) + byte2;
+                extB = 0;
+                Object top = Pop();
+                if (top == true_) {
+                } else if (top == false_) {
+                    ip_ += delta;
+                } else {
+                    SendNonBooleanReceiver(top);
+                }
+                break;
+            }
+            case 245: {
+                uint8_t byte2 = *ip_++;
+                intptr_t selector_index = (extA << 5) + (byte2 >> 3);
+                intptr_t num_args = (extB << 3) | (byte2 & 7);
+                extA = extB = 0;
+                SelfSend(selector_index, num_args);
+                break;
+            }
+            case 246:  // V4: unassigned
+            case 247:  // V4: unassigned
+            case 248:  // V4: unassigned
+            case 249:  // V4: call primitive
+                FATAL("Unused bytecode");
+            case 250: {
+                uint8_t byte2 = *ip_++;
+                uint8_t byte3 = *ip_++;
+                PushRemoteTemp(byte3, byte2);
+                break;
+            }
+            case 251: {
+                uint8_t byte2 = *ip_++;
+                uint8_t byte3 = *ip_++;
+                StoreIntoRemoteTemp(byte3, byte2);
+                break;
+            }
+            case 252: {
+                uint8_t byte2 = *ip_++;
+                uint8_t byte3 = *ip_++;
+                PopIntoRemoteTemp(byte3, byte2);
+                break;
+            }
+            case 253: {
+                uint8_t byte2 = *ip_++;
+                uint8_t byte3 = *ip_++;
+                intptr_t num_copied = (byte2 >> 3 & 7) + ((extA / 16) << 3);
+                intptr_t num_args = (byte2 & 7) + ((extA % 16) << 3);
+                intptr_t block_size = byte3 + (extB << 8);
+                extA = extB = 0;
+                PushClosure(num_copied, num_args, block_size);
+                break;
+            }
+            case 254: {
+                uint8_t byte2 = *ip_++;
+                uint8_t byte3 = *ip_++;
+                intptr_t selector_index = (extA << 5) + (byte2 >> 3);
+                intptr_t num_args = (extB << 3) | (byte2 & 7);
+                intptr_t depth = byte3;
+                extA = extB = 0;
+                OuterSend(selector_index, num_args, depth);
+                break;
+            }
+            case 255:
+                FATAL("Unused bytecode");  // V4: unassigned
+                break;
+            default:
+                UNREACHABLE();
+        }
+    }
+}
+#else
+void Interpreter::Interpret() {
+    
+    Context context;
+    context.i = this;
+
+    for (;;) {
+        ASSERT(ip_ != 0);
+        ASSERT(sp_ != 0);
+        ASSERT(fp_ != 0);
+        
+        context.op = *ip_++;
+        //std::cout << (int)context.op << std::endl;
+        const auto& fp = funcTable_[context.op];
+        fp(context);
+    }
+}
+#endif
 
 Activation Interpreter::EnsureActivation(Object* fp) {
-  Activation activation = FrameActivation(fp);
-  if (activation == nullptr) {
-    activation = H->AllocateActivation();  // SAFEPOINT
-    activation->set_sender_fp(fp);
-    activation->set_bci(static_cast<SmallInteger>(nil));
-    activation->set_method(FrameMethod(fp));
-    if (FlagsIsClosure(FrameFlags(fp))) {
-      Closure closure = static_cast<Closure>(FrameTemp(fp, -1));
-      ASSERT(closure->IsClosure());
-      activation->set_closure(closure);
-    } else {
-      activation->set_closure(static_cast<Closure>(nil), kNoBarrier);
+    Activation activation = FrameActivation(fp);
+    if (activation == nullptr) {
+        activation = H->AllocateActivation();  // SAFEPOINT
+        activation->set_sender_fp(fp);
+        activation->set_bci(static_cast<SmallInteger>(nil));
+        activation->set_method(FrameMethod(fp));
+        if (FlagsIsClosure(FrameFlags(fp))) {
+            Closure closure = static_cast<Closure>(FrameTemp(fp, -1));
+            ASSERT(closure->IsClosure());
+            activation->set_closure(closure);
+        } else {
+            activation->set_closure(static_cast<Closure>(nil), kNoBarrier);
+        }
+        activation->set_receiver(FrameReceiver(fp));
+        // Note this differs from Cog, which also copies the parameters. It may help
+        // some debugging cases if parameters remain available in returned-from
+        // activations, but for now it is slightly simpler to treat all locals
+        // uniformly.
+        activation->set_stack_depth(SmallInteger::New(0));
+        
+        FrameActivationPut(fp, activation);
     }
-    activation->set_receiver(FrameReceiver(fp));
-    // Note this differs from Cog, which also copies the parameters. It may help
-    // some debugging cases if parameters remain available in returned-from
-    // activations, but for now it is slightly simpler to treat all locals
-    // uniformly.
-    activation->set_stack_depth(SmallInteger::New(0));
-
-    FrameActivationPut(fp, activation);
-  }
-  return activation;
+    return activation;
 }
 
 
 Activation Interpreter::FlushAllFrames() {
-  Activation top = EnsureActivation(fp_);  // SAFEPOINT
-  HandleScope h1(H, reinterpret_cast<Object*>(&top));
-
-  while (fp_ != 0) {
-    EnsureActivation(fp_);  // SAFEPOINT
-
-    Object* saved_fp = FrameSavedFP(fp_);
-    Activation sender;
-    if (saved_fp != 0) {
-      sender = EnsureActivation(saved_fp);  // SAFEPOINT
-    } else {
-      sender = FrameBaseSender(fp_);
-      ASSERT((sender == nil) || sender->IsActivation());
+    Activation top = EnsureActivation(fp_);  // SAFEPOINT
+    HandleScope h1(H, reinterpret_cast<Object*>(&top));
+    
+    while (fp_ != 0) {
+        EnsureActivation(fp_);  // SAFEPOINT
+        
+        Object* saved_fp = FrameSavedFP(fp_);
+        Activation sender;
+        if (saved_fp != 0) {
+            sender = EnsureActivation(saved_fp);  // SAFEPOINT
+        } else {
+            sender = FrameBaseSender(fp_);
+            ASSERT((sender == nil) || sender->IsActivation());
+        }
+        ASSERT((sender == nil) || sender->IsActivation());
+        
+        Activation activation = FrameActivation(fp_);
+        activation->set_sender(sender);
+        activation->set_bci(activation->method()->BCI(ip_));
+        
+        intptr_t num_args = FlagsNumArgs(FrameFlags(fp_));
+        intptr_t num_temps = num_args + FrameNumLocals(fp_, sp_);
+        for (intptr_t i = 0; i < num_temps; i++) {
+            activation->set_temp(i, FrameTemp(fp_, i));
+        }
+        activation->set_stack_depth(SmallInteger::New(num_temps));
+        
+        ip_ = FrameSavedIP(fp_);
+        sp_ = FrameSavedSP(fp_);
+        fp_ = saved_fp;
     }
-    ASSERT((sender == nil) || sender->IsActivation());
-
-    Activation activation = FrameActivation(fp_);
-    activation->set_sender(sender);
-    activation->set_bci(activation->method()->BCI(ip_));
-
-    intptr_t num_args = FlagsNumArgs(FrameFlags(fp_));
-    intptr_t num_temps = num_args + FrameNumLocals(fp_, sp_);
-    for (intptr_t i = 0; i < num_temps; i++) {
-      activation->set_temp(i, FrameTemp(fp_, i));
-    }
-    activation->set_stack_depth(SmallInteger::New(num_temps));
-
-    ip_ = FrameSavedIP(fp_);
-    sp_ = FrameSavedSP(fp_);
-    fp_ = saved_fp;
-  }
-
-  ip_ = 0;  // Was base sender.
-  ASSERT(sp_ == stack_base_);
-  ASSERT(fp_ == 0);
+    
+    ip_ = 0;  // Was base sender.
+    ASSERT(sp_ == stack_base_);
+    ASSERT(fp_ == 0);
 #if defined(DEBUG)
-  for (intptr_t i = 0; i < kStackSlots; i++) {
-    stack_limit_[i] = static_cast<Object>(kUninitializedWord);
-  }
+    for (intptr_t i = 0; i < kStackSlots; i++) {
+        stack_limit_[i] = static_cast<Object>(kUninitializedWord);
+    }
 #endif
-
-  return top;
+    
+    return top;
 }
 
 

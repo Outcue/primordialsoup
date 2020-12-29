@@ -7,6 +7,8 @@
 
 #include <setjmp.h>
 
+#include <vector>
+
 #include "vm/globals.h"
 #include "vm/assert.h"
 #include "vm/flags.h"
@@ -28,7 +30,7 @@ class Interpreter {
 
   void Enter();
   void Exit();
-  void ActivateDispatch(Method method, intptr_t num_args);
+  void ActivateDispatch(Method& method, intptr_t num_args);
   void ReturnFromDispatch();
 
   void Perform(String selector, intptr_t num_args);
@@ -39,6 +41,10 @@ class Interpreter {
   void PrintStack();
 
   const uint8_t* IPForAssert() { return ip_; }
+    
+  uint8_t GetAndIncrementIP() {
+      return *ip_++;
+  }
 
   Activation CurrentActivation();
   void SetCurrentActivation(Activation new_activation);
@@ -111,6 +117,14 @@ class Interpreter {
   }
 
  private:
+
+    struct Context {
+        Interpreter* i;
+        uint8_t op;
+        uintptr_t extA = 0;
+        uintptr_t extB = 0;
+    };
+
   void Interpret();
 
   INLINE void PushLiteralVariable(intptr_t offset);
@@ -169,9 +183,9 @@ class Interpreter {
   NOINLINE void SendNonBooleanReceiver(Object non_boolean);
 
   INLINE void InsertAbsentReceiver(Object receiver, intptr_t num_args);
-  INLINE void ActivateAbsent(Method method, Object receiver,
+  INLINE void ActivateAbsent(Method& method, Object receiver,
                              intptr_t num_args);
-  NOINLINE void Activate(Method method, intptr_t num_args);
+  NOINLINE void Activate(Method& method, intptr_t num_args);
   NOINLINE void StackOverflow();
 
   INLINE void MethodReturn(Object result);
@@ -183,6 +197,8 @@ class Interpreter {
   NOINLINE Activation EnsureActivation(Object* fp);
   NOINLINE Activation FlushAllFrames();
   bool HasLivingFrame(Activation activation);
+  void PopulateFunctionTable();
+
 
   static constexpr intptr_t kStackSlots = 1024;
   static constexpr intptr_t kStackSize = kStackSlots * sizeof(Object);
@@ -203,6 +219,13 @@ class Interpreter {
   Isolate* const isolate_;
   jmp_buf* environment_;
   LookupCache lookup_cache_;
+    
+    using Function = void(*)(Context&);
+    
+    //using Function = std::function<void(Context&)>;
+    using FunctionTable = std::vector<Function>;
+
+    FunctionTable funcTable_;
 };
 
 }  // namespace psoup

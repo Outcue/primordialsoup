@@ -20,9 +20,8 @@
 
 namespace psoup {
 
-static bool SetBlockingHelper(intptr_t fd, bool blocking) {
-  intptr_t status;
-  status = fcntl(fd, F_GETFL);
+static bool SetBlockingHelper(int fd, bool blocking) {
+  auto status = fcntl(fd, F_GETFL);
   if (status < 0) {
     perror("fcntl(F_GETFL) failed");
     return false;
@@ -71,7 +70,7 @@ KQueueMessageLoop::~KQueueMessageLoop() {
 intptr_t KQueueMessageLoop::AwaitSignal(intptr_t fd, intptr_t signals) {
   static const intptr_t kMaxChanges = 2;
   struct kevent changes[kMaxChanges];
-  intptr_t nchanges = 0;
+  int nchanges = 0;
   void* udata = reinterpret_cast<void*>(fd);
   if (signals & (1 << kReadEvent)) {
     EV_SET(changes + nchanges, fd, EVFILT_READ, EV_ADD, 0, 0, udata);

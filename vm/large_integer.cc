@@ -27,7 +27,6 @@ LargeInteger LargeInteger::Expand(Object integer, Heap* H) {
     value = static_cast<MediumInteger>(integer)->value();
   } else {
     UNREACHABLE();
-    value = 0;
   }
 
   LargeInteger result = H->AllocateLargeInteger(kMintDigits);
