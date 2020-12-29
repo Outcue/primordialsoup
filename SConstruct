@@ -107,7 +107,7 @@ def BuildVM(cxx, arch, target_os, debug, sanitize):
     env['CCFLAGS'] += [
       '-std=c++11',
       '-O3',
-      '-g3',
+      '-g',
       '-Werror',
       '-Wall',
       '-Wextra',
@@ -171,6 +171,8 @@ def BuildVM(cxx, arch, target_os, debug, sanitize):
     ]
   elif target_os == 'emscripten':
     env['LINKFLAGS'] += [
+      '--source-map-base http://localhost:8080',
+      '-g4',
       '-s', 'ALLOW_MEMORY_GROWTH=1',
       '-s', 'ENVIRONMENT=web',
       '-s', 'EXPORTED_FUNCTIONS=["_load_snapshot", "_handle_message", "_handle_signal"]',

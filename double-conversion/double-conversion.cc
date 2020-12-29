@@ -57,7 +57,7 @@ bool DoubleToStringConverter::HandleSpecialValues(
     StringBuilder* result_builder) const {
   Double double_inspect(value);
   if (double_inspect.IsInfinite()) {
-    if (infinity_symbol_ == NULL) return false;
+    if (infinity_symbol_ == nullptr) return false;
     if (value < 0) {
       result_builder->AddCharacter('-');
     }
@@ -65,7 +65,7 @@ bool DoubleToStringConverter::HandleSpecialValues(
     return true;
   }
   if (double_inspect.IsNan()) {
-    if (nan_symbol_ == NULL) return false;
+    if (nan_symbol_ == nullptr) return false;
     result_builder->AddString(nan_symbol_);
     return true;
   }
@@ -841,7 +841,7 @@ double StringToDoubleConverter::StringToIeee(
     current = next_non_space;
   }
 
-  if (infinity_symbol_ != NULL) {
+  if (infinity_symbol_ != nullptr) {
     if (ConsumeFirstCharacter(*current, infinity_symbol_, allow_case_insensibility)) {
       if (!ConsumeSubString(&current, end, infinity_symbol_, allow_case_insensibility)) {
         return junk_string_value_;
@@ -860,7 +860,7 @@ double StringToDoubleConverter::StringToIeee(
     }
   }
 
-  if (nan_symbol_ != NULL) {
+  if (nan_symbol_ != nullptr) {
     if (ConsumeFirstCharacter(*current, nan_symbol_, allow_case_insensibility)) {
       if (!ConsumeSubString(&current, end, nan_symbol_, allow_case_insensibility)) {
         return junk_string_value_;

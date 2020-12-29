@@ -110,7 +110,7 @@ void HeapObject::Pointers(Object** from, Object** to) {
 
 void HeapObject::AddToRememberedSet() const {
   Isolate* isolate = Isolate::Current();
-  ASSERT(isolate != NULL);
+  ASSERT(isolate != nullptr);
   isolate->heap()->AddToRememberedSet(*this);
 }
 

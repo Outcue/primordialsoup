@@ -72,7 +72,7 @@ VirtualMemory VirtualMemory::Allocate(size_t size,
            zx_status_get_string(status));
   }
 
-  ASSERT(name != NULL);
+  ASSERT(name != nullptr);
   zx_object_set_property(vmo, ZX_PROP_NAME, name, strlen(name));
 
   uintptr_t addr;

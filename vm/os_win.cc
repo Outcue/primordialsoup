@@ -100,7 +100,7 @@ void OS::PrintErr(const char* format, ...) {
 
 
 static int VSNPrint(char* str, size_t size, const char* format, va_list args) {
-  if (str == NULL || size == 0) {
+  if (str == nullptr || size == 0) {
     int retval = _vscprintf(format, args);
     if (retval < 0) {
       FATAL1("Fatal error in OS::VSNPrint with format '%s'", format);

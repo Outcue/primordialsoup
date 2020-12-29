@@ -43,7 +43,7 @@ class MutexLocker : public ValueObject {
  public:
   explicit MutexLocker(Mutex* mutex, bool no_safepoint_scope = true)
       : mutex_(mutex), no_safepoint_scope_(no_safepoint_scope) {
-    ASSERT(mutex != NULL);
+    ASSERT(mutex != nullptr);
     mutex_->Lock();
   }
 
@@ -96,7 +96,7 @@ class MonitorLocker : public ValueObject {
  public:
   explicit MonitorLocker(Monitor* monitor, bool no_safepoint_scope = true)
       : monitor_(monitor), no_safepoint_scope_(no_safepoint_scope) {
-    ASSERT(monitor != NULL);
+    ASSERT(monitor != nullptr);
     monitor_->Enter();
   }
 

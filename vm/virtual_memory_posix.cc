@@ -17,7 +17,7 @@ namespace psoup {
 
 VirtualMemory VirtualMemory::MapReadOnly(const char* filename) {
   FILE* file = fopen(filename, "r");
-  if (file == NULL) {
+  if (file == nullptr) {
     FATAL1("Failed to open '%s'\n", filename);
   }
   struct stat st;

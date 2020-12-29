@@ -220,12 +220,7 @@ class Interpreter {
   jmp_buf* environment_;
   LookupCache lookup_cache_;
     
-    using Function = void(*)(Context&);
-    
-    //using Function = std::function<void(Context&)>;
-    using FunctionTable = std::vector<Function>;
-
-    FunctionTable funcTable_;
+  std::vector<void(*)(Context&)> funcTable_;
 };
 
 }  // namespace psoup

@@ -2563,7 +2563,7 @@ DEFINE_PRIMITIVE(writeBytesToFile) {
   memcpy(raw_filename, filename->element_addr(0), filename->Size());
   raw_filename[filename->Size()] = 0;
   FILE* f = fopen(raw_filename, "wb");
-  if (f == NULL) {
+  if (f == nullptr) {
     FATAL1("Cannot open %s\n", raw_filename);
   }
 
@@ -2596,7 +2596,7 @@ DEFINE_PRIMITIVE(readFileAsBytes) {
   memcpy(raw_filename, filename->element_addr(0), filename->Size());
   raw_filename[filename->Size()] = 0;
   FILE* f = fopen(raw_filename, "rb");
-  if (f == NULL) {
+  if (f == nullptr) {
     FATAL1("Failed to stat '%s'\n", raw_filename);
   }
   struct stat st;
@@ -3486,7 +3486,7 @@ DEFINE_PRIMITIVE(quickReturnSelf) {
 }
 
 
-PrimitiveFunction** Primitives::primitive_table_ = NULL;
+PrimitiveFunction** Primitives::primitive_table_ = nullptr;
 
 
 void Primitives::Startup() {
@@ -3503,7 +3503,7 @@ PRIMITIVE_LIST(ADD_PRIMITIVE);
 
 void Primitives::Shutdown() {
   delete[] primitive_table_;
-  primitive_table_ = NULL;
+  primitive_table_ = nullptr;
 }
 
 }  // namespace psoup

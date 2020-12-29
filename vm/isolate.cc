@@ -16,13 +16,13 @@
 namespace psoup {
 
 #if defined(OS_EMSCRIPTEN)
-Isolate* Isolate::current_ = NULL;
+Isolate* Isolate::current_ = nullptr;
 #else
-thread_local Isolate* Isolate::current_ = NULL;
+thread_local Isolate* Isolate::current_ = nullptr;
 #endif
-Monitor* Isolate::isolates_list_monitor_ = NULL;
-Isolate* Isolate::isolates_list_head_ = NULL;
-ThreadPool* Isolate::thread_pool_ = NULL;
+Monitor* Isolate::isolates_list_monitor_ = nullptr;
+Isolate* Isolate::isolates_list_head_ = nullptr;
+ThreadPool* Isolate::thread_pool_ = nullptr;
 
 
 void Isolate::Startup() {
@@ -33,17 +33,17 @@ void Isolate::Startup() {
 
 void Isolate::Shutdown() {
   delete thread_pool_;  // Waits for all tasks to complete.
-  thread_pool_ = NULL;
-  ASSERT(isolates_list_head_ == NULL);
+  thread_pool_ = nullptr;
+  ASSERT(isolates_list_head_ == nullptr);
   delete isolates_list_monitor_;
-  isolates_list_monitor_ = NULL;
+  isolates_list_monitor_ = nullptr;
 }
 
 
 void Isolate::AddIsolateToList(Isolate* isolate) {
   MonitorLocker ml(isolates_list_monitor_);
-  ASSERT(isolate != NULL);
-  ASSERT(isolate->next_ == NULL);
+  ASSERT(isolate != nullptr);
+  ASSERT(isolate->next_ == nullptr);
   isolate->next_ = isolates_list_head_;
   isolates_list_head_ = isolate;
 }
@@ -51,16 +51,16 @@ void Isolate::AddIsolateToList(Isolate* isolate) {
 
 void Isolate::RemoveIsolateFromList(Isolate* isolate) {
   MonitorLocker ml(isolates_list_monitor_);
-  ASSERT(isolate != NULL);
+  ASSERT(isolate != nullptr);
   if (isolate == isolates_list_head_) {
     isolates_list_head_ = isolate->next_;
     return;
   }
-  Isolate* previous = NULL;
+  Isolate* previous = nullptr;
   Isolate* current = isolates_list_head_;
-  while (current != NULL) {
+  while (current != nullptr) {
     if (current == isolate) {
-      ASSERT(previous != NULL);
+      ASSERT(previous != nullptr);
       previous->next_ = current->next_;
       return;
     }
@@ -75,7 +75,7 @@ void Isolate::InterruptAll() {
   MonitorLocker ml(isolates_list_monitor_);
   OS::PrintErr("Got SIGINT\n");
   Isolate* current = isolates_list_head_;
-  while (current != NULL) {
+  while (current != nullptr) {
     OS::PrintErr("Interrupting %" Px "\n", reinterpret_cast<uword>(current));
     current->Interrupt();
     current = current->next_;
@@ -97,14 +97,14 @@ void Isolate::PrintStack() {
 
 
 Isolate::Isolate(void* snapshot, size_t snapshot_length, uint64_t seed) :
-    heap_(NULL),
-    interpreter_(NULL),
-    loop_(NULL),
+    heap_(nullptr),
+    interpreter_(nullptr),
+    loop_(nullptr),
     snapshot_(snapshot),
     snapshot_length_(snapshot_length),
     salt_(static_cast<uintptr_t>(seed)),
     random_(seed),
-    next_(NULL) {
+    next_(nullptr) {
   heap_ = new Heap();
   interpreter_ = new Interpreter(heap_, this);
   loop_ = new PlatformMessageLoop(this);
@@ -115,14 +115,14 @@ Isolate::Isolate(void* snapshot, size_t snapshot_length, uint64_t seed) :
 
   AddIsolateToList(this);
 
-  ASSERT(current_ == NULL);
+  ASSERT(current_ == nullptr);
   current_ = this;
 }
 
 
 Isolate::~Isolate() {
   ASSERT(current_ == this);
-  current_ = NULL;
+  current_ = nullptr;
 
   RemoveIsolateFromList(this);
   delete heap_;
@@ -133,7 +133,7 @@ Isolate::~Isolate() {
 
 void Isolate::ActivateMessage(IsolateMessage* isolate_message) {
   Object message;
-  if (isolate_message->data() != NULL) {
+  if (isolate_message->data() != nullptr) {
     intptr_t length = isolate_message->length();
     ByteArray bytes = heap_->AllocateByteArray(length);  // SAFEPOINT
     memcpy(bytes->element_addr(0), isolate_message->data(), length);
@@ -231,7 +231,7 @@ class SpawnIsolateTask : public ThreadPool::Task {
     uint64_t seed = OS::CurrentMonotonicNanos();
     Isolate* child_isolate = new Isolate(snapshot_, snapshot_length_, seed);
     child_isolate->loop()->PostMessage(initial_message_);
-    initial_message_ = NULL;
+    initial_message_ = nullptr;
     intptr_t exit_code = child_isolate->loop()->Run();
     delete child_isolate;
     if (exit_code != 0) {

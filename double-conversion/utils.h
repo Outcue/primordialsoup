@@ -195,9 +195,9 @@ inline int StrLength(const char* string) {
 template <typename T>
 class Vector {
  public:
-  Vector() : start_(NULL), length_(0) {}
+  Vector() : start_(nullptr), length_(0) {}
   Vector(T* data, int len) : start_(data), length_(len) {
-    ASSERT(len == 0 || (len > 0 && data != NULL));
+    ASSERT(len == 0 || (len > 0 && data != nullptr));
   }
 
   // Returns a vector using the same backing storage as this one,

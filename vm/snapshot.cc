@@ -132,8 +132,8 @@ class ArrayCluster : public Cluster {
 
   void ReadEdges(Deserializer* d, Heap* h) {
     for (intptr_t i = ref_start_; i < ref_stop_; i++) {
-      Array object = Array::Cast(d->Ref(i));
-      intptr_t size = object->Size();
+      auto object = Array::Cast(d->Ref(i));
+      const auto size = object->Size();
       for (intptr_t j = 0; j < size; j++) {
         object->set_element(j, d->ReadRef(), kNoBarrier);
       }
@@ -256,7 +256,7 @@ class SmallIntegerCluster : public Cluster {
     for (intptr_t i = 0; i < num_objects; i++) {
       int64_t value = d->ReadInt64();
       if (SmallInteger::IsSmiValue(value)) {
-        SmallInteger object = SmallInteger::New(value);
+        const auto object = SmallInteger::New(value);
         ASSERT(object->IsSmallInteger());
         d->RegisterRef(object);
       } else {
@@ -312,8 +312,8 @@ Deserializer::Deserializer(Heap* heap, void* snapshot, size_t snapshot_length) :
   snapshot_length_(snapshot_length),
   cursor_(snapshot_),
   heap_(heap),
-  clusters_(NULL),
-  refs_(NULL),
+  clusters_(nullptr),
+  refs_(nullptr),
   next_ref_(0) {
 }
 

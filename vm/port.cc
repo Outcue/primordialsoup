@@ -14,13 +14,13 @@
 
 namespace psoup {
 
-Mutex* PortMap::mutex_ = NULL;
-PortMap::Entry* PortMap::map_ = NULL;
+Mutex* PortMap::mutex_ = nullptr;
+PortMap::Entry* PortMap::map_ = nullptr;
 MessageLoop* PortMap::deleted_entry_ = reinterpret_cast<MessageLoop*>(1);
 intptr_t PortMap::capacity_ = 0;
 intptr_t PortMap::used_ = 0;
 intptr_t PortMap::deleted_ = 0;
-Random* PortMap::prng_ = NULL;
+Random* PortMap::prng_ = nullptr;
 
 
 intptr_t PortMap::FindPort(Port port) {
@@ -35,7 +35,7 @@ intptr_t PortMap::FindPort(Port port) {
   intptr_t index = port % capacity_;
   intptr_t start_index = index;
   Entry entry = map_[index];
-  while (entry.loop != NULL) {
+  while (entry.loop != nullptr) {
     if (entry.port == port) {
       return index;
     }
@@ -99,7 +99,7 @@ void PortMap::MaintainInvariants() {
 
 
 Port PortMap::CreatePort(MessageLoop* loop) {
-  ASSERT(loop != NULL);
+  ASSERT(loop != nullptr);
   MutexLocker ml(mutex_);
 #if defined(DEBUG)
   /// queue->CheckAccess();
@@ -125,7 +125,7 @@ Port PortMap::CreatePort(MessageLoop* loop) {
   ASSERT(index >= 0);
   ASSERT(index < capacity_);
   ASSERT(map_[index].port == 0);
-  ASSERT((map_[index].loop == NULL) ||
+  ASSERT((map_[index].loop == nullptr) ||
          (map_[index].loop == deleted_entry_));
   if (map_[index].loop == deleted_entry_) {
     // Consuming a deleted entry.
@@ -152,7 +152,7 @@ bool PortMap::PostMessage(IsolateMessage* message) {
   ASSERT(index < capacity_);
   MessageLoop* loop = map_[index].loop;
   ASSERT(map_[index].port != 0);
-  ASSERT((loop != NULL) && (loop != deleted_entry_));
+  ASSERT((loop != nullptr) && (loop != deleted_entry_));
   loop->PostMessage(message);
   return true;
 }
@@ -167,7 +167,7 @@ bool PortMap::ClosePort(Port port) {
   ASSERT(index < capacity_);
   ASSERT(map_[index].port != 0);
   ASSERT(map_[index].loop != deleted_entry_);
-  ASSERT(map_[index].loop != NULL);
+  ASSERT(map_[index].loop != nullptr);
 
   map_[index].port = 0;
   map_[index].loop = deleted_entry_;
@@ -211,11 +211,11 @@ void PortMap::Startup() {
 
 void PortMap::Shutdown() {
   delete mutex_;
-  mutex_ = NULL;
+  mutex_ = nullptr;
   delete prng_;
-  prng_ = NULL;
+  prng_ = nullptr;
   delete[] map_;
-  map_ = NULL;
+  map_ = nullptr;
 }
 
 }  // namespace psoup

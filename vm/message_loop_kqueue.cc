@@ -37,8 +37,8 @@ static bool SetBlockingHelper(int fd, bool blocking) {
 KQueueMessageLoop::KQueueMessageLoop(Isolate* isolate)
     : MessageLoop(isolate),
       mutex_(),
-      head_(NULL),
-      tail_(NULL),
+      head_(nullptr),
+      tail_(nullptr),
       wakeup_(0) {
   int result = pipe(interrupt_fds_);
   if (result != 0) {
@@ -104,12 +104,12 @@ void KQueueMessageLoop::MessageEpilogue(int64_t new_wakeup) {
 
 void KQueueMessageLoop::Exit(intptr_t exit_code) {
   exit_code_ = exit_code;
-  isolate_ = NULL;
+  isolate_ = nullptr;
 }
 
 void KQueueMessageLoop::PostMessage(IsolateMessage* message) {
   MutexLocker locker(&mutex_);
-  if (head_ == NULL) {
+  if (head_ == nullptr) {
     head_ = tail_ = message;
     Notify();
   } else {
@@ -129,13 +129,13 @@ void KQueueMessageLoop::Notify() {
 IsolateMessage* KQueueMessageLoop::TakeMessages() {
   MutexLocker locker(&mutex_);
   IsolateMessage* message = head_;
-  head_ = tail_ = NULL;
+  head_ = tail_ = nullptr;
   return message;
 }
 
 intptr_t KQueueMessageLoop::Run() {
-  while (isolate_ != NULL) {
-    struct timespec* timeout = NULL;
+  while (isolate_ != nullptr) {
+    struct timespec* timeout = nullptr;
     struct timespec ts;
     if (wakeup_ == 0) {
       // NULL pointer timespec for infinite timeout.
@@ -164,7 +164,7 @@ intptr_t KQueueMessageLoop::Run() {
       if ((events[i].flags & EV_ERROR) != 0) {
         FATAL("kevent failed\n");
       }
-      if (events[i].udata == NULL) {
+      if (events[i].udata == nullptr) {
         // Interrupt fd.
         uword message = 0;
         ssize_t red = read(interrupt_fds_[0], &message, sizeof(message));
@@ -198,7 +198,7 @@ intptr_t KQueueMessageLoop::Run() {
     }
 
     IsolateMessage* message = TakeMessages();
-    while (message != NULL) {
+    while (message != nullptr) {
       IsolateMessage* next = message->next_;
       DispatchMessage(message);
       message = next;
@@ -209,7 +209,7 @@ intptr_t KQueueMessageLoop::Run() {
     PortMap::CloseAllPorts(this);
   }
 
-  while (head_ != NULL) {
+  while (head_ != nullptr) {
     IsolateMessage* message = head_;
     head_ = message->next_;
     delete message;

@@ -15,8 +15,8 @@ namespace psoup {
 
 EmscriptenMessageLoop::EmscriptenMessageLoop(Isolate* isolate)
     : MessageLoop(isolate),
-      head_(NULL),
-      tail_(NULL),
+      head_(nullptr),
+      tail_(nullptr),
       wakeup_(0) {}
 
 EmscriptenMessageLoop::~EmscriptenMessageLoop() {}
@@ -37,13 +37,13 @@ void EmscriptenMessageLoop::MessageEpilogue(int64_t new_wakeup) {
 
 void EmscriptenMessageLoop::Exit(intptr_t exit_code) {
   exit_code_ = exit_code;
-  isolate_ = NULL;
+  isolate_ = nullptr;
 
   if (open_ports_ > 0) {
     PortMap::CloseAllPorts(this);
   }
 
-  while (head_ != NULL) {
+  while (head_ != nullptr) {
     IsolateMessage* message = head_;
     head_ = message->next_;
     delete message;
@@ -51,7 +51,7 @@ void EmscriptenMessageLoop::Exit(intptr_t exit_code) {
 }
 
 void EmscriptenMessageLoop::PostMessage(IsolateMessage* message) {
-  if (head_ == NULL) {
+  if (head_ == nullptr) {
     head_ = tail_ = message;
   } else {
     tail_->next_ = message;
@@ -66,14 +66,14 @@ intptr_t EmscriptenMessageLoop::Run() {
 
 int EmscriptenMessageLoop::HandleMessage() {
   IsolateMessage* message = head_;
-  if (head_ != NULL) {
+  if (head_ != nullptr) {
     head_ = message->next_;
-    if (head_ == NULL) {
-      tail_ = NULL;
+    if (head_ == nullptr) {
+      tail_ = nullptr;
     }
   }
 
-  if (message == NULL) {
+  if (message == nullptr) {
     DispatchWakeup();
   } else {
     DispatchMessage(message);
@@ -91,7 +91,7 @@ int EmscriptenMessageLoop::HandleSignal(int handle,
 }
 
 int EmscriptenMessageLoop::ComputeTimeout() {
-  if (head_ != NULL) return 0;
+  if (head_ != nullptr) return 0;
 
   if (wakeup_ == 0) return -1;
 

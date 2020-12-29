@@ -20,7 +20,7 @@ VirtualMemory VirtualMemory::MapReadOnly(const char* filename) {
                            OPEN_EXISTING,
                            0,
                            NULL);
-  if (file == NULL) {
+  if (file == nullptr) {
     FATAL1("Failed to open '%s'\n", filename);
   }
   BY_HANDLE_FILE_INFORMATION stat;
@@ -29,7 +29,7 @@ VirtualMemory VirtualMemory::MapReadOnly(const char* filename) {
   int64_t size = (static_cast<int64_t>(stat.nFileSizeHigh) << 32) |
       stat.nFileSizeLow;
   HANDLE mapping = CreateFileMapping(file, NULL, PAGE_READONLY, 0, 0, NULL);
-  if (mapping == NULL) {
+  if (mapping == nullptr) {
     FATAL("Failed CreateFileMapping\n");
   }
   void* address = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, size);
@@ -57,7 +57,7 @@ VirtualMemory VirtualMemory::Allocate(size_t size,
   }
 
   void* address = VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, prot);
-  if (address == NULL) {
+  if (address == nullptr) {
     FATAL1("Failed to VirtualAlloc %" Pd " bytes\n", size);
   }
 

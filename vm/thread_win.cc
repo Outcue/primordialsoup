@@ -74,7 +74,7 @@ int Thread::Start(const char* name,
 
 
 const ThreadId Thread::kInvalidThreadId = 0;
-const ThreadJoinId Thread::kInvalidThreadJoinId = NULL;
+const ThreadJoinId Thread::kInvalidThreadJoinId = nullptr;
 
 
 ThreadId Thread::GetCurrentThreadId() {
@@ -90,14 +90,14 @@ ThreadId Thread::GetCurrentThreadTraceId() {
 ThreadJoinId Thread::GetCurrentThreadJoinId() {
   ThreadId id = GetCurrentThreadId();
   HANDLE handle = OpenThread(SYNCHRONIZE, false, id);
-  ASSERT(handle != NULL);
+  ASSERT(handle != nullptr);
   return handle;
 }
 
 
 void Thread::Join(ThreadJoinId id) {
   HANDLE handle = static_cast<HANDLE>(id);
-  ASSERT(handle != NULL);
+  ASSERT(handle != nullptr);
   DWORD res = WaitForSingleObject(handle, INFINITE);
   CloseHandle(handle);
   ASSERT(res == WAIT_OBJECT_0);

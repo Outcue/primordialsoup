@@ -17,12 +17,12 @@ namespace psoup {
 IOCPMessageLoop::IOCPMessageLoop(Isolate* isolate)
     : MessageLoop(isolate),
       mutex_(),
-      head_(NULL),
-      tail_(NULL),
+      head_(nullptr),
+      tail_(nullptr),
       wakeup_(0) {
   completion_port_ = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL,
                                             1);
-  if (completion_port_ == NULL) {
+  if (completion_port_ == nullptr) {
     FATAL("Failed to create IOCP");
   }
 }
@@ -50,12 +50,12 @@ void IOCPMessageLoop::MessageEpilogue(int64_t new_wakeup) {
 
 void IOCPMessageLoop::Exit(intptr_t exit_code) {
   exit_code_ = exit_code;
-  isolate_ = NULL;
+  isolate_ = nullptr;
 }
 
 void IOCPMessageLoop::PostMessage(IsolateMessage* message) {
   MutexLocker locker(&mutex_);
-  if (head_ == NULL) {
+  if (head_ == nullptr) {
     head_ = tail_ = message;
     Notify();
   } else {
@@ -75,12 +75,12 @@ void IOCPMessageLoop::Notify() {
 IsolateMessage* IOCPMessageLoop::TakeMessages() {
   MutexLocker locker(&mutex_);
   IsolateMessage* message = head_;
-  head_ = tail_ = NULL;
+  head_ = tail_ = nullptr;
   return message;
 }
 
 intptr_t IOCPMessageLoop::Run() {
-  while (isolate_ != NULL) {
+  while (isolate_ != nullptr) {
     DWORD timeout;
     if (wakeup_ == 0) {
       timeout = INFINITE;
@@ -102,19 +102,19 @@ intptr_t IOCPMessageLoop::Run() {
     OVERLAPPED* overlapped;
     BOOL ok = GetQueuedCompletionStatus(completion_port_, &bytes,
                                         &key, &overlapped, timeout);
-    if (!ok && (overlapped == NULL)) {
+    if (!ok && (overlapped == nullptr)) {
       // Timeout.
       if ((wakeup_ != 0) && (OS::CurrentMonotonicNanos() >= wakeup_)) {
         DispatchWakeup();
       }
-    } else if (key == NULL) {
+    } else if (key == nullptr) {
       // Interrupt: will check messages below.
     } else {
       UNIMPLEMENTED();
     }
 
     IsolateMessage* message = TakeMessages();
-    while (message != NULL) {
+    while (message != nullptr) {
       IsolateMessage* next = message->next_;
       DispatchMessage(message);
       message = next;
@@ -125,7 +125,7 @@ intptr_t IOCPMessageLoop::Run() {
     PortMap::CloseAllPorts(this);
   }
 
-  while (head_ != NULL) {
+  while (head_ != nullptr) {
     IsolateMessage* message = head_;
     head_ = message->next_;
     delete message;
